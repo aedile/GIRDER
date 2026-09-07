@@ -184,7 +184,9 @@ static int mcs48_step(mcs48_t *c)
     case 0x80: case 0x81: c->a = MCS48_BUS_IN(R(op & 1)); cyc = 2; break;   /* MOVX A,@Rr */
     case 0x83: mcs48_pop(c, 0); cyc = 2; break;                   /* RET */
     case 0x85: c->psw &= (uint8_t)~PSW_F0; break;                 /* CLR F0 */
-    case 0x86: COND(!c->irq_line); break;                         /* JNI */
+    /* JNI jumps when the interrupt input is LOW, and that pin is active low - so it jumps
+     * when an interrupt is actually pending, not when it is absent. */
+    case 0x86: COND(c->irq_line); break;                          /* JNI */
     case 0x88: MCS48_BUS_OUT((uint8_t)(MCS48_BUS_IN(0) | IMM())); cyc = 2; break;
     case 0x89: c->p1 |= IMM(); MCS48_P1_OUT(c->p1); cyc = 2; break;
     case 0x8a: c->p2 |= IMM(); MCS48_P2_OUT(c->p2); cyc = 2; break;
