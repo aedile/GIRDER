@@ -31,7 +31,9 @@ static const char *TAG = "INPUT";
 #define PIN_BAT_EN   GPIO_NUM_15
 #define IMU_PERIOD_US 16000
 
-#define MOVE_DEG       10.0f    /* tilt this far to move */
+#define MOVE_DEG       10.0f    /* tilt this far to run */
+#define CLIMB_DEG       8.0f    /* and this far to climb - out-of-plane tilt is harder to hold */
+#define AXIS_STICK      1.5f    /* how much the other axis must beat the current one to take over */
 #define X_SIGN (-1.0f)          /* flip if left/right are reversed */
 #define Y_SIGN (-1.0f)          /* flip if forward/back are reversed */
 
@@ -41,6 +43,7 @@ static int coin_seq;                     /* 0 idle, 1 coin held, 2 gap, 3 start 
 static float neutral_lr, neutral_ud, dbg_roll, dbg_pitch;
 static bool have_neutral;
 static int8_t dir_x, dir_y;              /* -1 / 0 / +1 */
+static int8_t last_axis;                 /* 0 none, 1 horizontal, 2 vertical */
 
 static void read_angles(float *lr, float *ud)
 {
@@ -56,7 +59,7 @@ static void capture_neutral(void)
     if (!imu_ok) return;
     read_angles(&neutral_lr, &neutral_ud);
     have_neutral = true;
-    dir_x = dir_y = 0;
+    dir_x = dir_y = 0; last_axis = 0;
 }
 
 static inline float wrap_deg(float d)
@@ -135,13 +138,29 @@ void input_update(dk_input_t *in)
         float roll = wrap_deg(lr - neutral_lr) * X_SIGN;
         float pitch = wrap_deg(ud - neutral_ud) * Y_SIGN;
         dbg_roll = roll; dbg_pitch = pitch;
-        /* four-way: only the axis that is tilted further counts */
-        dir_x = dir_y = 0;
-        if (fabsf(roll) >= fabsf(pitch)) {
-            if (roll > MOVE_DEG) dir_x = +1; else if (roll < -MOVE_DEG) dir_x = -1;
-        } else {
-            if (pitch > MOVE_DEG) dir_y = +1; else if (pitch < -MOVE_DEG) dir_y = -1;
-        }
+        /*
+         * Four-way, but climbing needs a steadier hand than running does. On a ladder you hold
+         * the medal tipped away from you for a second or two, and a little roll comes with
+         * that; picking whichever axis is merely larger would hand those moments to left/right,
+         * which slides Mario off the ladder in a game that wants him centred on it.
+         *
+         * So: an axis that clears the threshold on its own wins outright, and when both clear
+         * it, the one already in use keeps it until the other beats it by half again as much.
+         * Climbing also gets a slightly lower threshold, because tipping the medal out of its
+         * own plane is a less natural motion than rolling it.
+         */
+        int hx = (roll > MOVE_DEG) ? +1 : (roll < -MOVE_DEG) ? -1 : 0;
+        int vy = (pitch > CLIMB_DEG) ? +1 : (pitch < -CLIMB_DEG) ? -1 : 0;
+        int axis;
+        if (!hx && !vy)      axis = 0;
+        else if (!vy)        axis = 1;
+        else if (!hx)        axis = 2;
+        else if (last_axis == 1) axis = (fabsf(pitch) > fabsf(roll) * AXIS_STICK) ? 2 : 1;
+        else if (last_axis == 2) axis = (fabsf(roll) > fabsf(pitch) * AXIS_STICK) ? 1 : 2;
+        else                 axis = (fabsf(roll) > fabsf(pitch)) ? 1 : 2;
+        last_axis = (int8_t)axis;
+        dir_x = (axis == 1) ? (int8_t)hx : 0;
+        dir_y = (axis == 2) ? (int8_t)vy : 0;
     }
 
     in->left  = (dir_x < 0) ? 1 : 0;
