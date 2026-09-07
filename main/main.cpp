@@ -43,6 +43,10 @@ extern "C" void app_main(void)
     render_init();
     input_init();
     audio_init();
+    /* The sound MCU is not right yet - it parks in a wavetable loop it should never have
+     * entered and drones. Start silent; a three-second hold on the button turns it back on
+     * for anyone who wants to hear the state of it. */
+    audio_set_mute(true);
     ESP_LOGI(TAG, "ready, free heap %lu", (unsigned long)esp_get_free_heap_size());
 
     int64_t ldk_us = esp_timer_get_time(), ldk_report = ldk_us, owed_us = 0;
