@@ -36,7 +36,7 @@ typedef struct {
     uint8_t timer_flag, f1;
     uint8_t irq_enabled, tcnti_enabled;
     uint8_t irq_line, in_irq;
-    uint8_t a11;                 /* SEL MB0 / MB1 */
+    uint16_t a11;                /* SEL MB0 / MB1: the A11 bank bit, so this must hold 0x800 */
     int32_t icount;
 } mcs48_t;
 
