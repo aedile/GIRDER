@@ -21,6 +21,7 @@ static uint8_t dac;               /* the current DAC level */
 static int snd_irq;
 
 static uint8_t bus_read(uint16_t offset);
+static uint8_t p2_read(void);
 static void p1_write(uint8_t v);
 static void p2_write(uint8_t v);
 
@@ -28,7 +29,7 @@ static void p2_write(uint8_t v);
 #define MCS48_BUS_IN(a)   bus_read((uint16_t)(a))
 #define MCS48_BUS_OUT(v)  ((void)(v))          /* the speech output, never fitted on this board */
 #define MCS48_P1_OUT(v)   p1_write(v)
-#define MCS48_P2_IN()     (uint8_t)(p2_latch ^ 0x20)
+#define MCS48_P2_IN()     p2_read()
 #define MCS48_P2_OUT(v)   p2_write(v)
 #define MCS48_T0()        (!((latch_6h >> 5) & 1))
 #define MCS48_T1()        (!((latch_6h >> 4) & 1))
@@ -49,6 +50,18 @@ static uint8_t ring[RING];
 static uint32_t ring_w, ring_r;
 static uint32_t samp_acc;          /* 16.16 fraction of an output sample */
 static uint32_t samp_step;         /* output samples per MCU machine cycle, 16.16 */
+
+/*
+ * Port 2 is not simply what the MCU last wrote. Bit 5 is not the MCU's output at all: it is
+ * wired back from bit 3 of the sound-signal latch the main CPU writes, and the whole port is
+ * inverted on the way in. Returning the MCU's own latch instead sends a JB5 at the top of its
+ * main loop down the wrong branch every single time, which is how it ended up droning.
+ */
+static uint8_t p2_read(void)
+{
+    uint8_t v = (uint8_t)((p2_latch & ~0x20) | (((latch_6h >> 3) & 1) << 5));
+    return (uint8_t)(v ^ 0x20);
+}
 
 static void p1_write(uint8_t v) { dac = v; }
 static void p2_write(uint8_t v) { p2_latch = v; }
